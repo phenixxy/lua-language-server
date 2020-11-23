@@ -15,26 +15,33 @@ local furi      = require 'file-uri'
 local pub       = require 'pub'
 local fs        = require 'bee.filesystem'
 local lang      = require 'language'
+local json      = require 'json'
 
 local function updateConfig()
     local diagnostics = require 'provider.diagnostic'
     local vm          = require 'vm'
-    local configs = proto.awaitRequest('workspace/configuration', {
-        items = {
-            {
-                scopeUri = workspace.uri,
-                section = 'Lua',
+
+    local configs
+    if client.info.capabilities.workspace.configuration then
+        configs = proto.awaitRequest('workspace/configuration', {
+            items = {
+                {
+                    scopeUri = workspace.uri,
+                    section = 'Lua',
+                },
+                {
+                    scopeUri = workspace.uri,
+                    section = 'files.associations',
+                },
+                {
+                    scopeUri = workspace.uri,
+                    section = 'files.exclude',
+                }
             },
-            {
-                scopeUri = workspace.uri,
-                section = 'files.associations',
-            },
-            {
-                scopeUri = workspace.uri,
-                section = 'files.exclude',
-            }
-        },
-    })
+        })        
+    else
+        configs = { {}, {}, {}, }
+    end
 
     local updated = configs[1]
     local other   = {
@@ -238,11 +245,17 @@ proto.on('textDocument/definition', function (params)
         if targetUri then
             local targetLines = files.getLines(targetUri)
             local targetText  = files.getText(targetUri)
-            response[i] = define.locationLink(targetUri
-                , define.range(targetLines, targetText, info.target.start, info.target.finish)
-                , define.range(targetLines, targetText, info.target.start, info.target.finish)
-                , define.range(lines,       text,       info.source.start, info.source.finish)
-            )
+            if client.info.capabilities.textDocument.typeDefinition.linkSupport then
+                response[i] = define.locationLink(targetUri
+                    , define.range(targetLines, targetText, info.target.start, info.target.finish)
+                    , define.range(targetLines, targetText, info.target.start, info.target.finish)
+                    , define.range(lines,       text,       info.source.start, info.source.finish)
+                )
+            else
+                response[i] = define.location(targetUri
+                    , define.range(targetLines, targetText, info.target.start, info.target.finish)
+                )
+            end
         end
     end
     return response
